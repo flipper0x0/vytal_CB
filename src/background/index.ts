@@ -1,16 +1,12 @@
 import attachDebugger from './attachDebugger'
 
-const attachTab = (tabId: number) => {
-  if (!chrome.debugger) {
-    console.warn("Debugger API is not available (likely running in Firefox). Core functionality will be limited.");
-    return;
-  }
-  
-  chrome.debugger.getTargets((tabs) => {
-    const currentTab = tabs.find((obj) => obj.tabId === tabId)
-    if (!currentTab?.attached) {
-      attachDebugger(tabId)
-    }
+const isDebuggerAvailable = (): boolean => typeof chrome.debugger !== 'undefined'
+
+const attachTab = (tabId: number): void => {
+  if (!isDebuggerAvailable()) return
+  chrome.debugger.getTargets((targets) => {
+    const already = targets.some((t) => t.tabId === tabId && t.attached)
+    if (!already) attachDebugger(tabId)
   })
 }
 
@@ -18,23 +14,17 @@ chrome.tabs.onCreated.addListener((tab) => {
   if (tab.id) attachDebugger(tab.id)
 })
 
-chrome.tabs.onActivated.addListener((tab) => {
-  attachTab(tab.tabId)
+chrome.tabs.onActivated.addListener(({ tabId }) => attachTab(tabId))
+
+// Only reattach when a new page actually starts loading — avoids duplicate attaches on every DOM event
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === 'loading') attachTab(tabId)
 })
 
-chrome.tabs.onUpdated.addListener((tabId) => {
-  attachTab(tabId)
-})
-
-// Keep-Alive Mechanism for Chromium MV3 Service Workers
-// Prevents the service worker from sleeping while debugging is active
-if (typeof chrome.alarms !== "undefined") {
-  chrome.alarms.create('keepAlive', { periodInMinutes: 0.4 });
+// Keep-alive heartbeat for Chromium MV3 service workers
+if (typeof chrome.alarms !== 'undefined') {
+  chrome.alarms.create('keepAlive', { periodInMinutes: 0.4 })
   chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === 'keepAlive') {
-      chrome.runtime.getPlatformInfo(() => {
-         // Dummy call to reset the service worker idle timer
-      });
-    }
-  });
+    if (alarm.name === 'keepAlive') chrome.runtime.getPlatformInfo(() => {})
+  })
 }

@@ -1,4 +1,4 @@
-export interface ipData {
+export interface IpData {
   query: string
   timezone: string
   countryCode: string

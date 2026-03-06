@@ -1,59 +1,64 @@
-const injectSpoofing = () => {
-  chrome.storage.local.get([
-    'ipData', 'timezone', 'lat', 'lon', 'locale', 'userAgent', 'platform',
-    'locationBrowserDefault', 'userAgentBrowserDefault'
-  ], (storage) => {
-    // We inject a script tag directly into the DOM so it runs in the MAIN world.
-    // Firefox MV3 doesn't easily support world: 'MAIN' in the manifest yet.
-    const code = `
-      (() => {
-        const s = ${JSON.stringify(storage)};
-        
-        // spoof timezone & locale
-        if (!s.locationBrowserDefault) {
-          if (s.timezone || s.locale) {
-            const OriginalDateTimeFormat = Intl.DateTimeFormat;
-            Intl.DateTimeFormat = function(locales, options) {
-              options = options || {};
-              if (s.timezone) options.timeZone = s.timezone;
-              return new OriginalDateTimeFormat(s.locale || locales, options);
-            };
-            Intl.DateTimeFormat.prototype = OriginalDateTimeFormat.prototype;
-          }
-          
-          // spoof geolocation
-          if (s.lat || s.lon) {
-            navigator.geolocation.getCurrentPosition = function(success, error, options) {
-              success({
-                coords: {
-                  latitude: parseFloat(s.lat || (s.ipData && s.ipData.lat) || 0),
-                  longitude: parseFloat(s.lon || (s.ipData && s.ipData.lon) || 0),
-                  accuracy: 10, altitude: null, altitudeAccuracy: null, heading: null, speed: null
-                },
-                timestamp: Date.now()
-              });
-            };
-          }
-        }
+const STORAGE_KEYS = [
+  'ipData', 'timezone', 'lat', 'lon', 'locale',
+  'userAgent', 'platform', 'locationBrowserDefault', 'userAgentBrowserDefault',
+]
 
-        // spoof user agent & platform
-        if (!s.userAgentBrowserDefault) {
-          if (s.userAgent) {
-            Object.defineProperty(navigator, 'userAgent', { get: () => s.userAgent });
-          }
-          if (s.platform) {
-            Object.defineProperty(navigator, 'platform', { get: () => s.platform });
-          }
-        }
-      })();
-    `;
-    
-    const script = document.createElement('script');
-    script.textContent = code;
-    // Inject as early as possible so scripts loaded after it get the spoofed values
-    (document.head || document.documentElement).appendChild(script);
-    script.remove();
-  });
-};
+const buildPayload = (s: Record<string, any>): string => {
+  const ip = s.ipData ?? {}
+  const lat = s.lat ? parseFloat(s.lat) : (ip.lat ?? 0)
+  const lon = s.lon ? parseFloat(s.lon) : (ip.lon ?? 0)
 
-injectSpoofing();
+  const spoofTzLocale = !s.locationBrowserDefault && (s.timezone || s.locale)
+  const spoofGeo = !s.locationBrowserDefault && (s.lat || s.lon)
+  const spoofUA = !s.userAgentBrowserDefault && (s.userAgent || s.platform)
+
+  let code = '(() => {'
+
+  if (spoofTzLocale) {
+    code += `
+  try {
+    const _DTF = Intl.DateTimeFormat;
+    Intl.DateTimeFormat = function(locales, opts) {
+      opts = opts || {};
+      ${s.timezone ? `opts.timeZone = ${JSON.stringify(s.timezone)};` : ''}
+      return new _DTF(${s.locale ? JSON.stringify(s.locale) : 'locales'}, opts);
+    };
+    Object.assign(Intl.DateTimeFormat, _DTF);
+    Intl.DateTimeFormat.prototype = _DTF.prototype;
+  } catch(e) {}`
+  }
+
+  if (spoofGeo) {
+    code += `
+  try {
+    const _coords = { latitude: ${lat}, longitude: ${lon}, accuracy: 10, altitude: null, altitudeAccuracy: null, heading: null, speed: null };
+    const _pos = { coords: _coords, timestamp: Date.now() };
+    navigator.geolocation.getCurrentPosition = (ok) => ok(_pos);
+    navigator.geolocation.watchPosition = (ok) => { ok(_pos); return 0; };
+  } catch(e) {}`
+  }
+
+  if (spoofUA) {
+    code += `
+  try {
+    ${s.userAgent ? `Object.defineProperty(navigator, 'userAgent', { get: () => ${JSON.stringify(s.userAgent)}, configurable: true });` : ''}
+    ${s.platform ? `Object.defineProperty(navigator, 'platform', { get: () => ${JSON.stringify(s.platform)}, configurable: true });` : ''}
+  } catch(e) {}`
+  }
+
+  code += '})();'
+  return code
+}
+
+const inject = (code: string): void => {
+  const el = document.createElement('script')
+  el.textContent = code
+  ;(document.head ?? document.documentElement).prepend(el)
+  el.remove()
+}
+
+chrome.storage.local.get(STORAGE_KEYS, (s) => {
+  const hasLocation = !s.locationBrowserDefault && (s.timezone || s.lat || s.lon || s.locale)
+  const hasUA = !s.userAgentBrowserDefault && (s.userAgent || s.platform)
+  if (hasLocation || hasUA) inject(buildPayload(s))
+})

@@ -9,24 +9,16 @@ var { CleanWebpackPlugin } = require('clean-webpack-plugin')
 
 const ASSET_PATH = process.env.ASSET_PATH || '/'
 
-var alias = {
-  'react-dom': '@hot-loader/react-dom',
+// Only alias react-dom to hot-loader in development — avoids bundling HMR code in production
+var alias = {}
+if (env.NODE_ENV === 'development') {
+  alias['react-dom'] = '@hot-loader/react-dom'
 }
 
-// load the secrets
 var secretsPath = path.join(__dirname, 'secrets.' + env.NODE_ENV + '.js')
 
 var fileExtensions = [
-  'jpg',
-  'jpeg',
-  'png',
-  'gif',
-  'eot',
-  'otf',
-  'svg',
-  'ttf',
-  'woff',
-  'woff2',
+  'jpg', 'jpeg', 'png', 'gif', 'eot', 'otf', 'svg', 'ttf', 'woff', 'woff2',
 ]
 
 if (fileSystem.existsSync(secretsPath)) {
@@ -38,7 +30,7 @@ var options = {
   entry: {
     popup: path.join(__dirname, 'src', 'popup', 'index.tsx'),
     background: path.join(__dirname, 'src', 'background', 'index.ts'),
-    content: path.join(__dirname, 'src', 'content', 'index.ts'), // Added content script entry
+    content: path.join(__dirname, 'src', 'content', 'index.ts'),
   },
   chromeExtensionBoilerplate: {
     notHotReload: ['background', 'content'],
@@ -84,7 +76,7 @@ var options = {
     modules: [path.resolve(__dirname, 'src'), 'node_modules'],
     alias: alias,
     extensions: fileExtensions
-      .map((extension) => '.' + extension)
+      .map((ext) => '.' + ext)
       .concat(['.js', '.jsx', '.ts', '.tsx', '.css']),
   },
   plugins: [
@@ -97,59 +89,42 @@ var options = {
           from: 'src/manifest.json',
           to: path.join(__dirname, 'build/manifest.json'),
           force: true,
-          transform: function (content, path) {
-            let manifest = JSON.parse(content.toString());
-            // Inject content scripts dynamically
-            manifest.content_scripts = [
-              {
-                matches: ["<all_urls>"],
-                js: ["content.bundle.js"],
-                run_at: "document_start",
-                all_frames: true
-              }
-            ];
-            return Buffer.from(
-              JSON.stringify({
-                description: process.env.npm_package_description,
-                version: process.env.npm_package_version,
-                ...manifest,
-              })
-            )
+          transform: (content) => {
+            const manifest = JSON.parse(content.toString())
+            manifest.content_scripts = [{
+              matches: ['<all_urls>'],
+              js: ['content.bundle.js'],
+              run_at: 'document_start',
+              all_frames: true,
+            }]
+            return Buffer.from(JSON.stringify({
+              description: process.env.npm_package_description,
+              version: process.env.npm_package_version,
+              ...manifest,
+            }))
           },
         },
         {
           from: 'src/manifest.json',
           to: path.join(__dirname, 'build/manifest-firefox.json'),
           force: true,
-          transform: function (content, path) {
-            let manifest = JSON.parse(content.toString());
-            // Firefox MV3 uses background scripts instead of service workers
-            manifest.background = {
-              "scripts": ["background.bundle.js"]
-            };
-            // Firefox specific settings to avoid warnings
+          transform: (content) => {
+            const manifest = JSON.parse(content.toString())
+            manifest.background = { scripts: ['background.bundle.js'] }
             manifest.browser_specific_settings = {
-              "gecko": {
-                "id": "vytal@flipper0x0",
-                "strict_min_version": "109.0"
-              }
-            };
-            // Inject content scripts for Firefox
-            manifest.content_scripts = [
-              {
-                matches: ["<all_urls>"],
-                js: ["content.bundle.js"],
-                run_at: "document_start",
-                all_frames: true
-              }
-            ];
-            return Buffer.from(
-              JSON.stringify({
-                description: process.env.npm_package_description,
-                version: process.env.npm_package_version,
-                ...manifest,
-              })
-            )
+              gecko: { id: 'vytal@flipper0x0', strict_min_version: '109.0' },
+            }
+            manifest.content_scripts = [{
+              matches: ['<all_urls>'],
+              js: ['content.bundle.js'],
+              run_at: 'document_start',
+              all_frames: true,
+            }]
+            return Buffer.from(JSON.stringify({
+              description: process.env.npm_package_description,
+              version: process.env.npm_package_version,
+              ...manifest,
+            }))
           },
         },
         {
@@ -157,21 +132,9 @@ var options = {
           to: path.join(__dirname, 'build/_locales'),
           force: true,
         },
-        {
-          from: 'src/assets/icon128.png',
-          to: path.join(__dirname, 'build'),
-          force: true,
-        },
-        {
-          from: 'src/assets/icon48.png',
-          to: path.join(__dirname, 'build'),
-          force: true,
-        },
-        {
-          from: 'src/assets/Nunito-VariableFont_wght.ttf',
-          to: path.join(__dirname, 'build'),
-          force: true,
-        },
+        { from: 'src/assets/icon128.png', to: path.join(__dirname, 'build'), force: true },
+        { from: 'src/assets/icon48.png', to: path.join(__dirname, 'build'), force: true },
+        { from: 'src/assets/Nunito-VariableFont_wght.ttf', to: path.join(__dirname, 'build'), force: true },
       ],
     }),
     new HtmlWebpackPlugin({
@@ -181,9 +144,7 @@ var options = {
       cache: false,
     }),
   ],
-  infrastructureLogging: {
-    level: 'info',
-  },
+  infrastructureLogging: { level: 'info' },
 }
 
 if (env.NODE_ENV === 'development') {
@@ -192,9 +153,7 @@ if (env.NODE_ENV === 'development') {
   options.optimization = {
     minimize: true,
     minimizer: [
-      new TerserPlugin({
-        extractComments: false,
-      }),
+      new TerserPlugin({ extractComments: false }),
     ],
   }
 }
