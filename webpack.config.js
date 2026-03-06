@@ -51,32 +51,17 @@ var options = {
   module: {
     rules: [
       {
-        // look for .css or .scss files
         test: /\.(css|scss)$/,
-        // in the `src` directory
         use: [
-          {
-            loader: 'style-loader',
-          },
-          {
-            loader: 'css-loader',
-          },
-          {
-            loader: 'sass-loader',
-            options: {
-              sourceMap: true,
-            },
-          },
+          { loader: 'style-loader' },
+          { loader: 'css-loader' },
+          { loader: 'sass-loader', options: { sourceMap: true } },
         ],
       },
       {
         test: new RegExp('.(' + fileExtensions.join('|') + ')$'),
         type: 'asset/resource',
         exclude: /node_modules/,
-        // loader: 'file-loader',
-        // options: {
-        //   name: '[name].[ext]',
-        // },
       },
       {
         test: /\.html$/,
@@ -87,12 +72,8 @@ var options = {
       {
         test: /\.(js|jsx)$/,
         use: [
-          {
-            loader: 'source-map-loader',
-          },
-          {
-            loader: 'babel-loader',
-          },
+          { loader: 'source-map-loader' },
+          { loader: 'babel-loader' },
         ],
         exclude: /node_modules/,
       },
@@ -108,16 +89,14 @@ var options = {
   plugins: [
     new CleanWebpackPlugin({ verbose: false }),
     new webpack.ProgressPlugin(),
-    // expose and write the allowed env vars on the compiled bundle
     new webpack.EnvironmentPlugin(['NODE_ENV']),
     new CopyWebpackPlugin({
       patterns: [
         {
           from: 'src/manifest.json',
-          to: path.join(__dirname, 'build'),
+          to: path.join(__dirname, 'build/manifest.json'),
           force: true,
           transform: function (content, path) {
-            // generates the manifest file using the package.json informations
             return Buffer.from(
               JSON.stringify({
                 description: process.env.npm_package_description,
@@ -127,37 +106,47 @@ var options = {
             )
           },
         },
-      ],
-    }),
-    new CopyWebpackPlugin({
-      patterns: [
+        {
+          from: 'src/manifest.json',
+          to: path.join(__dirname, 'build/manifest-firefox.json'),
+          force: true,
+          transform: function (content, path) {
+            let manifest = JSON.parse(content.toString());
+            // Firefox MV3 uses background scripts instead of service workers
+            manifest.background = {
+              "scripts": ["background.bundle.js"]
+            };
+            // Firefox specific settings to avoid warnings
+            manifest.browser_specific_settings = {
+              "gecko": {
+                "id": "vytal@flipper0x0",
+                "strict_min_version": "109.0"
+              }
+            };
+            return Buffer.from(
+              JSON.stringify({
+                description: process.env.npm_package_description,
+                version: process.env.npm_package_version,
+                ...manifest,
+              })
+            )
+          },
+        },
         {
           from: 'src/_locales',
           to: path.join(__dirname, 'build/_locales'),
           force: true,
         },
-      ],
-    }),
-    new CopyWebpackPlugin({
-      patterns: [
         {
           from: 'src/assets/icon128.png',
           to: path.join(__dirname, 'build'),
           force: true,
         },
-      ],
-    }),
-    new CopyWebpackPlugin({
-      patterns: [
         {
           from: 'src/assets/icon48.png',
           to: path.join(__dirname, 'build'),
           force: true,
         },
-      ],
-    }),
-    new CopyWebpackPlugin({
-      patterns: [
         {
           from: 'src/assets/Nunito-VariableFont_wght.ttf',
           to: path.join(__dirname, 'build'),

@@ -1,4 +1,9 @@
 const attachDebugger = (tabId: number) => {
+  if (!chrome.debugger) {
+    // Firefox does not fully support chrome.debugger CDP commands
+    return;
+  }
+  
   chrome.storage.local.get(
     [
       'ipData',
@@ -86,7 +91,6 @@ const attachDebugger = (tabId: number) => {
                   userAgent: storage.userAgent,
                   platform: storage.platform,
                 }
-                // { acceptLanguage: "en-CA" },
               )
             }
           }
