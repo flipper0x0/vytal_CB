@@ -38,9 +38,10 @@ var options = {
   entry: {
     popup: path.join(__dirname, 'src', 'popup', 'index.tsx'),
     background: path.join(__dirname, 'src', 'background', 'index.ts'),
+    content: path.join(__dirname, 'src', 'content', 'index.ts'), // Added content script entry
   },
   chromeExtensionBoilerplate: {
-    notHotReload: ['background'],
+    notHotReload: ['background', 'content'],
   },
   output: {
     filename: '[name].bundle.js',
@@ -97,11 +98,21 @@ var options = {
           to: path.join(__dirname, 'build/manifest.json'),
           force: true,
           transform: function (content, path) {
+            let manifest = JSON.parse(content.toString());
+            // Inject content scripts dynamically
+            manifest.content_scripts = [
+              {
+                matches: ["<all_urls>"],
+                js: ["content.bundle.js"],
+                run_at: "document_start",
+                all_frames: true
+              }
+            ];
             return Buffer.from(
               JSON.stringify({
                 description: process.env.npm_package_description,
                 version: process.env.npm_package_version,
-                ...JSON.parse(content.toString()),
+                ...manifest,
               })
             )
           },
@@ -123,6 +134,15 @@ var options = {
                 "strict_min_version": "109.0"
               }
             };
+            // Inject content scripts for Firefox
+            manifest.content_scripts = [
+              {
+                matches: ["<all_urls>"],
+                js: ["content.bundle.js"],
+                run_at: "document_start",
+                all_frames: true
+              }
+            ];
             return Buffer.from(
               JSON.stringify({
                 description: process.env.npm_package_description,
